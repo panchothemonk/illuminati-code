@@ -5,15 +5,15 @@ Terminal AI coding assistant powered by Kimi API.
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/illuminati-code/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/panchothemonk/illuminati-code/main/scripts/install.sh | sh
 ```
 
-Or download a prebuilt binary from [Releases](https://github.com/yourusername/illuminati-code/releases).
+Or download a prebuilt binary from [Releases](https://github.com/panchothemonk/illuminati-code/releases).
 
 ## Manual Build
 
 ```bash
-git clone https://github.com/yourusername/illuminati-code.git
+git clone https://github.com/panchothemonk/illuminati-code.git
 cd illuminati-code
 bun install
 bun build --compile --outfile=illuminati-code src/main.ts

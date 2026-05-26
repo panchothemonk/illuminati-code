@@ -81,11 +81,52 @@ function printBanner(): void {
   console.log('')
 }
 
+async function askForApiKey(): Promise<boolean> {
+  console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
+  console.log('\x1b[36m  Welcome to Illuminati Code!          \x1b[0m')
+  console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
+  console.log('')
+  console.log('To use Illuminati Code, you need a Kimi API key.')
+  console.log('Get one at: https://platform.moonshot.cn/console/api-keys')
+  console.log('')
+
+  const key = await new Promise<string>((resolve) => {
+    rl.question('\x1b[32mEnter your Kimi API key: \x1b[0m', (answer) => {
+      resolve(answer.trim())
+    })
+  })
+
+  if (!key) {
+    console.log('\x1b[31mNo API key provided. Exiting.\x1b[0m')
+    return false
+  }
+
+  KIMI_API_KEY = key
+  try {
+    const { writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const dir = join(homedir(), '.illuminati-code')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ apiKey: key, model: CURRENT_MODEL }, null, 2), 'utf-8')
+    console.log('\x1b[32mAPI key saved!\x1b[0m\n')
+    return true
+  } catch (err: any) {
+    console.log(`\x1b[31mError saving config: ${err.message}\x1b[0m`)
+    return false
+  }
+}
+
 printBanner()
 
 if (!KIMI_API_KEY) {
-  console.log('\x1b[33mWarning: KIMI_API_KEY not set.\x1b[0m')
-  console.log('')
+  askForApiKey().then(ok => {
+    if (!ok) {
+      rl.close()
+      process.exit(1)
+    }
+    rl.prompt()
+  })
 }
 
 function maybeCompact(): void {
@@ -142,7 +183,9 @@ function setCoordinator(c: AgentCoordinator | undefined): void {
 
 registerAllCommands()
 
-rl.prompt()
+if (KIMI_API_KEY) {
+  rl.prompt()
+}
 
 rl.on('line', async (input) => {
   const text = input.trim()

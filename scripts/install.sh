@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="yourusername/illuminati-code"
+REPO="panchothemonk/illuminati-code"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
 # Detect OS/architecture
