@@ -1,4 +1,3 @@
-import { Readline } from 'readline'
 import { resolve } from 'path'
 
 export enum PermissionMode {
@@ -81,75 +80,16 @@ function matchRule(path: string, tool: string, rules: PermissionRule[]): Permiss
   return undefined
 }
 
-let permissionPromptActive = false
-
-export function isPermissionPromptActive(): boolean {
-  return permissionPromptActive
-}
-
-/** Pause the given readline, ask a y/n question on raw stdin, then resume readline.
- *  This avoids two readline instances fighting over the same stdin stream. */
-function askUser(question: string, mainRl?: Readline): Promise<string> {
-  return new Promise((resolve) => {
-    permissionPromptActive = true
-
-    // Pause the main readline so it doesn't steal our answer
-    if (mainRl) mainRl.pause()
-
-    process.stdout.write(`${question} (y/n): `)
-
-    const buf: string[] = []
-    const wasRaw = process.stdin.isTTY ? (process.stdin as any).isRaw : false
-
-    const onData = (chunk: Buffer) => {
-      for (const ch of chunk) {
-        // CR (13) or LF (10) -> submit answer
-        if (ch === 13 || ch === 10) {
-          cleanup()
-          const answer = buf.join('').trim().toLowerCase()
-          resolve(answer)
-          return
-        }
-        // Backspace / DEL
-        if (ch === 127 || ch === 8) {
-          buf.pop()
-          process.stdout.write('\b \b')
-          continue
-        }
-        // Printable ASCII
-        if (ch >= 32 && ch < 127) {
-          buf.push(String.fromCharCode(ch))
-          process.stdout.write('*')          // mask so stray chars don't echo
-        }
-      }
-    }
-
-    const cleanup = () => {
-      process.stdin.removeListener('data', onData)
-      if (process.stdin.isTTY && !wasRaw) {
-        process.stdin.setRawMode(false)
-      }
-      if (mainRl) {
-        mainRl.resume()
-      }
-      permissionPromptActive = false
-    }
-
-    // Switch stdin into raw mode so we get key-by-key input
-    if (process.stdin.isTTY) process.stdin.setRawMode(true)
-    process.stdin.on('data', onData)
-  })
-}
-
 export interface ToolPermissionContext {
   toolName: string
   args: Record<string, any>
   config: PermissionConfig
-  readline?: Readline
+  onPromptStart?: () => void
+  onPromptEnd?: () => void
 }
 
 export async function checkPermission(ctx: ToolPermissionContext): Promise<{ allowed: boolean; reason?: string }> {
-  const { toolName, args, config, readline } = ctx
+  const { toolName, args, config, onPromptStart, onPromptEnd } = ctx
 
   const isDestructive = DESTRUCTIVE_TOOLS.has(toolName)
   if (!isDestructive) {
@@ -197,7 +137,16 @@ export async function checkPermission(ctx: ToolPermissionContext): Promise<{ all
       question += ' \x1b[31mWARNING: This path looks sensitive!\x1b[0m'
     }
 
-    const answer = await askUser(question, readline)
+    onPromptStart?.()
+    const answer = await new Promise<string>((resolve) => {
+      process.stdout.write(`${question} (y/n): `)
+      process.stdin.once('data', (data: Buffer) => {
+        const text = data.toString().trim().toLowerCase()
+        resolve(text)
+      })
+    })
+    onPromptEnd?.()
+
     if (answer === 'y' || answer === 'yes') {
       return { allowed: true }
     }
