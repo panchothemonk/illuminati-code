@@ -61,7 +61,24 @@ async function ensureMemoryIndexed(): Promise<void> {
   memoryIndexed = true
 }
 
-if (messages.length === 0 || !messages.some(m => m.role === 'system')) {
+// Validate loaded messages: any assistant with tool_calls must have matching tool results after
+function isValidHistory(msgs: Message[]): boolean {
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i]
+    if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+      const ids = new Set(m.tool_calls.map((tc: any) => tc.id))
+      for (let j = i + 1; j < msgs.length && ids.size > 0; j++) {
+        if (msgs[j].role === 'tool' && msgs[j].tool_call_id && ids.has(msgs[j].tool_call_id)) {
+          ids.delete(msgs[j].tool_call_id)
+        }
+      }
+      if (ids.size > 0) return false
+    }
+  }
+  return true
+}
+
+if (messages.length === 0 || !messages.some(m => m.role === 'system') || !isValidHistory(messages)) {
   messages = [{ role: 'system', content: SYSTEM_PROMPT }]
   sessionManager.setMessages(messages)
 }
