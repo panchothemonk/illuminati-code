@@ -1,0 +1,6 @@
+illuminati-code
+ruvector.db
+agentdb.rvf*
+node_modules/
+.DS_Store
+*.log
