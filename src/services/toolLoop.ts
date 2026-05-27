@@ -326,8 +326,7 @@ export async function runToolLoop({
       const permResult = await checkPermission({
         toolName: toolName,
         args,
-        config: permissionConfig,
-        readline
+        config: permissionConfig
       })
 
       if (!permResult.allowed) {

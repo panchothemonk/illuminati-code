@@ -52,6 +52,7 @@ let memoryIndexed = false
 let activeCoordinator: AgentCoordinator | undefined
 const msgQueue: string[] = []
 let msgProcessing = false
+let isPrompting = false
 
 async function ensureMemoryIndexed(): Promise<void> {
   if (memoryIndexed) return
@@ -420,6 +421,11 @@ rl.on('line', async (input) => {
   }
 
   // Normal chat message
+  if (isPrompting) {
+    // User typed during a permission prompt — ignore, the prompt handler will get it
+    rl.prompt()
+    return
+  }
   if (msgProcessing) {
     msgQueue.push(text)
     console.log(`\x1b[90m[Queued ${msgQueue.length} message${msgQueue.length > 1 ? 's' : ''}]\x1b[0m`)
