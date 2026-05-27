@@ -54,11 +54,12 @@ export async function executeCommand(command: string, args: string[], ctx: Comma
   if (!def) return false
   try {
     await def.handler(args, ctx)
+    return true
   } catch (err: any) {
     ctx.print(`\x1b[31m[Command Error] ${err.message}\x1b[0m`)
     if (ctx.debug) {
       ctx.print(err.stack || '')
     }
+    return true // We handled it (printed error), so don't fall through
   }
-  return true
 }

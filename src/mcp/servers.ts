@@ -64,7 +64,7 @@ export function getServerConfig(name: string): MCPServerConfig | undefined {
   return loadConfig().servers.find(s => s.name === name)
 }
 
-export async function connectServer(name: string): Promise<MCPClient> {
+export async function connectServer(name: string, timeoutMs = 30000): Promise<MCPClient> {
   const existing = activeClients.get(name)
   if (existing && existing.isInitialized()) {
     return existing
@@ -76,8 +76,14 @@ export async function connectServer(name: string): Promise<MCPClient> {
   }
 
   const client = new MCPClient(config)
-  await client.connect()
-  await client.initialize()
+
+  // Connect with timeout
+  const connectPromise = client.connect().then(() => client.initialize())
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Connection to MCP server "${name}" timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+
+  await Promise.race([connectPromise, timeoutPromise])
   activeClients.set(name, client)
   return client
 }

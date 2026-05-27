@@ -6,6 +6,7 @@ import { checkPermission, createDefaultPermissionConfig, loadPermissionConfigFro
 const KIMI_BASE_URL = 'https://api.kimi.com/coding'
 const KIMI_CLAW_ID = '19e51d2c-47a2-8b88-8000-000027bae32f'
 const DEFAULT_MODEL = 'kimi-k2.6'
+const MAX_TOOL_ITERATIONS = 25
 
 let mcpInitialized = false
 
@@ -143,10 +144,12 @@ export async function runToolLoop({
 }): Promise<string> {
   await initMCPTools()
 
+  let toolIterationCount = 0
   const tools = buildToolDefinitions(ALL_TOOLS)
   const toolMap = new Map(ALL_TOOLS.map(t => [t.name, t]))
 
-  while (true) {
+  while (toolIterationCount < MAX_TOOL_ITERATIONS) {
+    toolIterationCount++
     const requestBody: any = {
       model: model || DEFAULT_MODEL,
       messages,
@@ -160,16 +163,27 @@ export async function runToolLoop({
 
     onApiRequest?.(requestBody)
 
-    const response = await fetch(`${KIMI_BASE_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'User-Agent': 'Desktop Kimi Claw Plugin',
-        'X-Kimi-Claw-ID': KIMI_CLAW_ID
-      },
-      body: JSON.stringify(requestBody)
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000)
+
+    let response
+    try {
+      response = await fetch(`${KIMI_BASE_URL}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'User-Agent': 'Desktop Kimi Claw Plugin',
+          'X-Kimi-Claw-ID': KIMI_CLAW_ID
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      throw err
+    }
 
     if (!response.ok) {
       const err = await response.text()
@@ -186,7 +200,14 @@ export async function runToolLoop({
     let collectedToolCalls: ToolCall[] = []
 
     while (true) {
-      const { done, value } = await reader.read()
+      let readResult
+      try {
+        readResult = await reader.read()
+      } catch (readErr: any) {
+        try { reader.cancel() } catch {}
+        throw new Error(`Stream read error: ${readErr.message}`)
+      }
+      const { done, value } = readResult
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -326,8 +347,7 @@ export async function runToolLoop({
       const permResult = await checkPermission({
         toolName: toolName,
         args,
-        config: permissionConfig,
-        readline
+        config: permissionConfig
       })
 
       if (!permResult.allowed) {
@@ -355,4 +375,6 @@ export async function runToolLoop({
 
     // Loop back to send tool results to the model
   }
+
+  throw new Error(`Max tool iterations (${MAX_TOOL_ITERATIONS}) reached. The model may be stuck in a tool-calling loop. Try rephrasing your request.`)
 }

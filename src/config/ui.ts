@@ -48,119 +48,133 @@ function saveMcpConfig(cfg: { servers: any[] }): void {
 function question(rl: any, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(prompt, (answer: string) => resolve(answer.trim()))
+    rl.on('SIGINT', () => resolve(''))
+    rl.on('close', () => resolve(''))
   })
 }
 
-export async function runConfigUI(): Promise<void> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout
-  })
-
-  let running = true
-  while (running) {
-    console.log('')
-    console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
-    console.log('\x1b[36m  Illuminati Code Config Editor        \x1b[0m')
-    console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
-    console.log('  1. Edit API Key')
-    console.log('  2. Edit Model')
-    console.log('  3. Edit Permission Mode')
-    console.log('  4. Edit Auto-Save Interval (ms)')
-    console.log('  5. Edit Max Context Tokens')
-    console.log('  6. Manage MCP Servers')
-    console.log('  7. View Current Config')
-    console.log('  8. Save & Exit')
-    console.log('  9. Exit Without Saving')
-    console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
-
-    const choice = await question(rl, '\x1b[32mSelect option: \x1b[0m')
-
-    const cfg = loadConfig()
-
-    switch (choice) {
-      case '1': {
-        const current = cfg.apiKey ? `${cfg.apiKey.slice(0, 8)}...` : '(not set)'
-        console.log(`Current API Key: ${current}`)
-        const key = await question(rl, 'Enter new API key (or press Enter to keep): ')
-        if (key) {
-          cfg.apiKey = key
-          saveConfig(cfg)
-          console.log('\x1b[32mAPI key updated.\x1b[0m')
-        }
-        break
-      }
-      case '2': {
-        console.log(`Current model: ${cfg.model || 'kimi-k2.6'}`)
-        const model = await question(rl, 'Enter new model (or press Enter to keep): ')
-        if (model) {
-          cfg.model = model
-          saveConfig(cfg)
-          console.log('\x1b[32mModel updated.\x1b[0m')
-        }
-        break
-      }
-      case '3': {
-        console.log(`Current permission mode: ${cfg.permissionMode || 'ask'}`)
-        console.log('Available: auto, ask, deny')
-        const mode = await question(rl, 'Enter new mode (or press Enter to keep): ')
-        if (mode && ['auto', 'ask', 'deny'].includes(mode)) {
-          cfg.permissionMode = mode
-          saveConfig(cfg)
-          console.log('\x1b[32mPermission mode updated.\x1b[0m')
-        } else if (mode) {
-          console.log('\x1b[31mInvalid mode.\x1b[0m')
-        }
-        break
-      }
-      case '4': {
-        console.log(`Current auto-save interval: ${cfg.autoSaveIntervalMs || 30000}ms`)
-        const interval = await question(rl, 'Enter new interval in ms (or press Enter to keep): ')
-        const n = parseInt(interval, 10)
-        if (!isNaN(n) && n > 0) {
-          cfg.autoSaveIntervalMs = n
-          saveConfig(cfg)
-          console.log('\x1b[32mAuto-save interval updated.\x1b[0m')
-        }
-        break
-      }
-      case '5': {
-        console.log(`Current max context tokens: ${cfg.maxContextTokens || 128000}`)
-        const tokens = await question(rl, 'Enter new max tokens (or press Enter to keep): ')
-        const n = parseInt(tokens, 10)
-        if (!isNaN(n) && n > 0) {
-          cfg.maxContextTokens = n
-          saveConfig(cfg)
-          console.log('\x1b[32mMax context tokens updated.\x1b[0m')
-        }
-        break
-      }
-      case '6': {
-        await manageMCPServers(rl)
-        break
-      }
-      case '7': {
-        console.log('\x1b[36mCurrent Config:\x1b[0m')
-        console.log(JSON.stringify(loadConfig(), null, 2))
-        break
-      }
-      case '8': {
-        saveConfig(cfg)
-        console.log('\x1b[32mConfig saved.\x1b[0m')
-        running = false
-        break
-      }
-      case '9': {
-        running = false
-        break
-      }
-      default: {
-        console.log('\x1b[31mInvalid option.\x1b[0m')
-      }
-    }
+export async function runConfigUI(existingRl?: any): Promise<void> {
+  // Pause the main readline to prevent input conflicts
+  if (existingRl?.pause) {
+    existingRl.pause()
   }
 
-  rl.close()
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true
+  })
+
+  try {
+    let running = true
+    while (running) {
+      console.log('')
+      console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
+      console.log('\x1b[36m  Illuminati Code Config Editor        \x1b[0m')
+      console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
+      console.log('  1. Edit API Key')
+      console.log('  2. Edit Model')
+      console.log('  3. Edit Permission Mode')
+      console.log('  4. Edit Auto-Save Interval (ms)')
+      console.log('  5. Edit Max Context Tokens')
+      console.log('  6. Manage MCP Servers')
+      console.log('  7. View Current Config')
+      console.log('  8. Save & Exit')
+      console.log('  9. Exit Without Saving')
+      console.log('\x1b[36m═══════════════════════════════════════\x1b[0m')
+
+      const choice = await question(rl, '\x1b[32mSelect option: \x1b[0m')
+
+      const cfg = loadConfig()
+
+      switch (choice) {
+        case '1': {
+          const current = cfg.apiKey ? `${cfg.apiKey.slice(0, 8)}...` : '(not set)'
+          console.log(`Current API Key: ${current}`)
+          const key = await question(rl, 'Enter new API key (or press Enter to keep): ')
+          if (key) {
+            cfg.apiKey = key
+            saveConfig(cfg)
+            console.log('\x1b[32mAPI key updated.\x1b[0m')
+          }
+          break
+        }
+        case '2': {
+          console.log(`Current model: ${cfg.model || 'kimi-k2.6'}`)
+          const model = await question(rl, 'Enter new model (or press Enter to keep): ')
+          if (model) {
+            cfg.model = model
+            saveConfig(cfg)
+            console.log('\x1b[32mModel updated.\x1b[0m')
+          }
+          break
+        }
+        case '3': {
+          console.log(`Current permission mode: ${cfg.permissionMode || 'ask'}`)
+          console.log('Available: auto, ask, deny')
+          const mode = await question(rl, 'Enter new mode (or press Enter to keep): ')
+          if (mode && ['auto', 'ask', 'deny'].includes(mode)) {
+            cfg.permissionMode = mode
+            saveConfig(cfg)
+            console.log('\x1b[32mPermission mode updated.\x1b[0m')
+          } else if (mode) {
+            console.log('\x1b[31mInvalid mode.\x1b[0m')
+          }
+          break
+        }
+        case '4': {
+          console.log(`Current auto-save interval: ${cfg.autoSaveIntervalMs || 30000}ms`)
+          const interval = await question(rl, 'Enter new interval in ms (or press Enter to keep): ')
+          const n = parseInt(interval, 10)
+          if (!isNaN(n) && n > 0) {
+            cfg.autoSaveIntervalMs = n
+            saveConfig(cfg)
+            console.log('\x1b[32mAuto-save interval updated.\x1b[0m')
+          }
+          break
+        }
+        case '5': {
+          console.log(`Current max context tokens: ${cfg.maxContextTokens || 128000}`)
+          const tokens = await question(rl, 'Enter new max tokens (or press Enter to keep): ')
+          const n = parseInt(tokens, 10)
+          if (!isNaN(n) && n > 0) {
+            cfg.maxContextTokens = n
+            saveConfig(cfg)
+            console.log('\x1b[32mMax context tokens updated.\x1b[0m')
+          }
+          break
+        }
+        case '6': {
+          await manageMCPServers(rl)
+          break
+        }
+        case '7': {
+          console.log('\x1b[36mCurrent Config:\x1b[0m')
+          console.log(JSON.stringify(loadConfig(), null, 2))
+          break
+        }
+        case '8': {
+          saveConfig(cfg)
+          console.log('\x1b[32mConfig saved.\x1b[0m')
+          running = false
+          break
+        }
+        case '9': {
+          running = false
+          break
+        }
+        default: {
+          console.log('\x1b[31mInvalid option.\x1b[0m')
+        }
+      }
+    }
+  } finally {
+    // Don't close stdin - just remove our listener
+    rl.removeAllListeners()
+    if (existingRl?.resume) {
+      existingRl.resume()
+    }
+  }
 }
 
 async function manageMCPServers(rl: any): Promise<void> {

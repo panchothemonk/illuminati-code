@@ -79,6 +79,10 @@ export class AgentCoordinator {
       : `Task: ${description}\n\nBreak this into subtasks.`
 
     const result = await decomposer.execute('decompose', prompt)
+
+    // Clean up decomposer worker
+    try { decomposer.cancel('Decomposition complete') } catch {}
+
     let subtasks: Array<{
       description: string
       context?: string
@@ -134,26 +138,45 @@ export class AgentCoordinator {
     task.startedAt = Date.now()
     this.activeTasks.set(task.id, task)
 
-    const result = await worker.execute(task.id, task.description, task.context)
+    try {
+      const result = await worker.execute(task.id, task.description, task.context)
 
-    task.status = result.status
-    task.completedAt = Date.now()
-    task.result = result
-    this.activeTasks.delete(task.id)
-    this.completedTasks.set(task.id, result)
+      task.status = result.status
+      task.completedAt = Date.now()
+      task.result = result
+      this.activeTasks.delete(task.id)
+      this.completedTasks.set(task.id, result)
 
-    this.emit(
-      result.status === 'completed' ? 'task_complete' : 'task_fail',
-      result,
-      worker.id,
-      task.id,
-      result.error
-    )
+      this.emit(
+        result.status === 'completed' ? 'task_complete' : 'task_fail',
+        result,
+        worker.id,
+        task.id,
+        result.error
+      )
 
-    this.workers.delete(worker.id)
-    this.emit('agent_kill', { reason: 'Task complete' }, worker.id)
-
-    return result
+      return result
+    } catch (err: any) {
+      task.status = 'failed'
+      task.completedAt = Date.now()
+      const result: AgentResult = {
+        taskId: task.id,
+        agentId: worker.id,
+        status: 'failed',
+        output: '',
+        toolCalls: [],
+        error: err.message,
+        duration: 0
+      }
+      task.result = result
+      this.activeTasks.delete(task.id)
+      this.completedTasks.set(task.id, result)
+      this.emit('task_fail', result, worker.id, task.id, err.message)
+      return result
+    } finally {
+      this.workers.delete(worker.id)
+      this.emit('agent_kill', { reason: 'Task complete' }, worker.id)
+    }
   }
 
   private async executeSwarm(tasks: AgentTask[]): Promise<AgentResult> {
@@ -258,7 +281,8 @@ export class AgentCoordinator {
       if (t.dependencies && t.dependencies.length > 0) {
         return t.dependencies.every(depId => {
           const dep = this.completedTasks.get(depId)
-          return dep && dep.status === 'completed'
+          // Allow task if dependency is completed OR failed (don't get stuck)
+          return dep && (dep.status === 'completed' || dep.status === 'failed')
         })
       }
       return true
@@ -350,6 +374,13 @@ export class AgentCoordinator {
 
   cancelAll(reason = 'Coordinator shutdown'): void {
     this.running = false
+    // Cancel all pending tasks first
+    for (const task of [...this.taskQueue]) {
+      task.status = 'cancelled'
+      this.emit('task_cancel', { reason }, undefined, task.id)
+    }
+    this.taskQueue = []
+    // Cancel active workers
     for (const worker of this.workers.values()) {
       worker.cancel(reason)
     }
@@ -357,8 +388,21 @@ export class AgentCoordinator {
       task.status = 'cancelled'
       this.emit('task_cancel', { reason }, task.assignedTo, task.id)
     }
+    // Resolve any remaining tasks as cancelled
+    for (const task of this.activeTasks.values()) {
+      if (!this.completedTasks.has(task.id)) {
+        this.completedTasks.set(task.id, {
+          taskId: task.id,
+          agentId: task.assignedTo || 'cancelled',
+          status: 'cancelled',
+          output: '',
+          toolCalls: [],
+          error: reason,
+          duration: 0
+        })
+      }
+    }
     this.workers.clear()
     this.activeTasks.clear()
-    this.taskQueue = []
   }
 }

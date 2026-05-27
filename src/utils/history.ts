@@ -49,8 +49,15 @@ export function undoLast(filePath: string): Snapshot | null {
 
   const latest = files[0]
   const snapshotPath = join(dir, latest.name)
-  const data = readFileSync(snapshotPath, 'utf-8')
-  const snapshot: Snapshot = JSON.parse(data)
+  let snapshot: Snapshot
+  try {
+    const data = readFileSync(snapshotPath, 'utf-8')
+    snapshot = JSON.parse(data)
+  } catch (err: any) {
+    // Corrupted snapshot - clean up and return null
+    try { unlinkSync(snapshotPath) } catch {}
+    return null
+  }
 
   writeFileSync(filePath, snapshot.content, 'utf-8')
   unlinkSync(snapshotPath)

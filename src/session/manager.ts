@@ -51,7 +51,12 @@ export class SessionManager {
   startAutoSave(): void {
     this.stopAutoSave()
     this.autoSaveTimer = setInterval(() => {
-      this.saveCurrent()
+      try {
+        this.saveCurrent()
+      } catch (err: any) {
+        // Log but don't crash - auto-save should be resilient
+        console.error(`[Session] Auto-save failed: ${err.message}`)
+      }
     }, this.options.autoSaveIntervalMs)
   }
 
@@ -100,6 +105,10 @@ export class SessionManager {
 
   destroy(): void {
     this.stopAutoSave()
-    this.saveCurrent()
+    try {
+      this.saveCurrent()
+    } catch (err: any) {
+      console.error(`[Session] Final save failed: ${err.message}`)
+    }
   }
 }

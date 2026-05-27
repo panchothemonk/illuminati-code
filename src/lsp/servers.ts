@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 
 export interface LspServerConfig {
@@ -159,7 +159,7 @@ export function detectRootPath(filePath: string, config: LspServerConfig): strin
         // Handle glob-like markers (e.g., *.csproj)
         const prefix = marker.replace('.*', '').replace('*', '')
         try {
-          const { readdirSync } = require('fs')
+          // readdirSync is statically imported from fs at top of file
           const files = readdirSync(dir)
           if (files.some((f: string) => f.endsWith(prefix) || f.includes(prefix))) {
             return dir
@@ -180,7 +180,9 @@ export function detectRootPath(filePath: string, config: LspServerConfig): strin
 }
 
 export function detectLanguageFromPath(filePath: string): string {
-  const ext = filePath.slice(filePath.lastIndexOf('.'))
+  const dotIndex = filePath.lastIndexOf('.')
+  if (dotIndex === -1 || dotIndex === 0) return 'plaintext'
+  const ext = filePath.slice(dotIndex)
   const config = getServerConfigByExtension(ext)
   return config?.languageIds[0] || 'plaintext'
 }

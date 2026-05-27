@@ -23,14 +23,31 @@ export const ImageTool: Tool = {
 
     try {
       const buffer = readFileSync(fullPath)
+      // Limit to 20MB for images
+      const MAX_IMAGE_SIZE = 20 * 1024 * 1024
+      if (buffer.length > MAX_IMAGE_SIZE) {
+        return `Error: Image too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB). Max size is 20MB.`
+      }
       const base64 = buffer.toString('base64')
       const mimeType = getMimeType(fullPath)
       const prompt = args.prompt || 'Describe this image in detail.'
 
-      const apiKey = process.env['KIMI_API_KEY'] || ''
+      const { homedir } = await import('os')
+      const { join: pathJoin } = await import('path')
+      const configPath = pathJoin(homedir(), '.illuminati-code', 'config.json')
+      let apiKey = process.env['KIMI_API_KEY'] || ''
+      if (!apiKey && existsSync(configPath)) {
+        try {
+          const cfg = JSON.parse(readFileSync(configPath, 'utf-8'))
+          apiKey = cfg.apiKey || ''
+        } catch {}
+      }
       if (!apiKey) {
         return 'Error: KIMI_API_KEY not set. Cannot analyze image.'
       }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000)
 
       const response = await fetch(`${KIMI_BASE_URL}/v1/chat/completions`, {
         method: 'POST',
@@ -58,8 +75,10 @@ export const ImageTool: Tool = {
           ],
           max_tokens: 4096,
           temperature: 0.7
-        })
+        }),
+        signal: controller.signal
       })
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errText = await response.text()
@@ -76,7 +95,9 @@ export const ImageTool: Tool = {
 }
 
 function getMimeType(filePath: string): string {
-  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase()
+  const dotIndex = filePath.lastIndexOf('.')
+  if (dotIndex === -1 || dotIndex === 0) return 'application/octet-stream'
+  const ext = filePath.slice(dotIndex).toLowerCase()
   const map: Record<string, string> = {
     '.png': 'image/png',
     '.jpg': 'image/jpeg',

@@ -14,7 +14,8 @@ import { resolve } from 'path'
 const clientCache = new Map<string, LspClient>()
 
 async function getOrCreateClient(filePath: string): Promise<{ client: LspClient; config: LspServerConfig } | null> {
-  const ext = filePath.slice(filePath.lastIndexOf('.'))
+  const dotIndex = filePath.lastIndexOf('.')
+  const ext = dotIndex > 0 ? filePath.slice(dotIndex) : ''
   let config = getServerConfigByExtension(ext)
   if (!config) {
     const langId = detectLanguageFromPath(filePath)

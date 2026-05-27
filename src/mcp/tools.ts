@@ -71,7 +71,7 @@ function jsonSchemaToZod(schema: any): ZodTypeAny {
       if (schema.exclusiveMinimum !== undefined) n = n.gt(schema.exclusiveMinimum)
       if (schema.exclusiveMaximum !== undefined) n = n.lt(schema.exclusiveMaximum)
       if (schema.multipleOf !== undefined) {
-        n = n.refine((v: number) => v % schema.multipleOf === 0, { message: `Must be multiple of ${schema.multipleOf}` })
+        n = n.refine((v: number) => v % schema.multipleOf === 0, { message: `Must be multiple of ${schema.multipleOf}` }) as any
       }
       return n
     }
@@ -83,7 +83,7 @@ function jsonSchemaToZod(schema: any): ZodTypeAny {
       if (schema.minItems !== undefined) arr = arr.min(schema.minItems)
       if (schema.maxItems !== undefined) arr = arr.max(schema.maxItems)
       if (schema.uniqueItems) {
-        arr = arr.refine((v: any[]) => new Set(v).size === v.length, { message: 'Items must be unique' })
+        arr = arr.refine((v: any[]) => new Set(v).size === v.length, { message: 'Items must be unique' }) as any
       }
       return arr
     }
