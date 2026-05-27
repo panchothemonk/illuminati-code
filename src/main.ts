@@ -52,6 +52,7 @@ let memoryIndexed = false
 let activeCoordinator: AgentCoordinator | undefined
 const msgQueue: string[] = []
 let msgProcessing = false
+let isPrompting = false
 
 async function ensureMemoryIndexed(): Promise<void> {
   if (memoryIndexed) return
@@ -353,6 +354,11 @@ rl.on('line', async (input) => {
       if (usage.shouldCompact) {
         console.log('\x1b[33mWarning: over threshold, compaction recommended\x1b[0m')
       }
+      return
+    }
+
+    if (isPrompting) {
+      // User typed during a permission prompt — ignore, the prompt handler will get it
       return
     }
 

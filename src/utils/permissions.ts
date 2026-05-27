@@ -85,12 +85,10 @@ export interface ToolPermissionContext {
   toolName: string
   args: Record<string, any>
   config: PermissionConfig
-  onPromptStart?: () => void
-  onPromptEnd?: () => void
 }
 
 export async function checkPermission(ctx: ToolPermissionContext): Promise<{ allowed: boolean; reason?: string }> {
-  const { toolName, args, config, onPromptStart, onPromptEnd } = ctx
+  const { toolName, args, config } = ctx
 
   const isDestructive = DESTRUCTIVE_TOOLS.has(toolName)
   if (!isDestructive) {
@@ -138,14 +136,13 @@ export async function checkPermission(ctx: ToolPermissionContext): Promise<{ all
       question += ' \x1b[31mWARNING: This path looks sensitive!\x1b[0m'
     }
 
-    onPromptStart?.()
     const answer = await new Promise<string>((resolve) => {
       const askRl = createInterface({
         input: process.stdin,
         output: process.stdout,
         terminal: true
       })
-      askRl.question(`${question} (y/n): `, (response) => {
+      askRl.question(`${question} (y/n): `, (response: string) => {
         askRl.close()
         resolve(response.trim().toLowerCase())
       })
@@ -154,7 +151,6 @@ export async function checkPermission(ctx: ToolPermissionContext): Promise<{ all
         resolve('n')
       })
     })
-    onPromptEnd?.()
 
     if (answer === 'y' || answer === 'yes') {
       return { allowed: true }
