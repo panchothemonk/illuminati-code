@@ -81,6 +81,27 @@ export class LspClient {
 
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('LSP server failed to start within 10 seconds'))
+      }, 10000)
+
+      const cleanup = () => {
+        clearTimeout(timeout)
+        this.process?.off('error', onError)
+        this.process?.off('exit', onExit)
+      }
+
+      const onError = (err: Error) => {
+        cleanup()
+        reject(err)
+      }
+
+      const onExit = (code: number | null) => {
+        cleanup()
+        reject(new Error(`LSP server exited with code ${code}`))
+      }
+
       this.process = spawn(this.serverConfig.command, this.serverConfig.args, {
         cwd: this.rootUri.replace('file://', ''),
         env: process.env,
@@ -92,15 +113,16 @@ export class LspClient {
         // LSP servers often log to stderr; ignore for now
       })
 
-      this.process.on('error', reject)
-      this.process.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          this.pendingRequests.forEach((req) => req.reject(new Error(`Server exited with code ${code}`)))
-        }
-      })
+      this.process.on('error', onError)
+      this.process.on('exit', onExit)
 
-      // Give the server a moment to start
-      setTimeout(resolve, 100)
+      // Give the server a moment to start, then resolve
+      setTimeout(() => {
+        if (this.process && !this.process.killed) {
+          cleanup()
+          resolve()
+        }
+      }, 500)
     })
   }
 
@@ -137,12 +159,30 @@ export class LspClient {
   async shutdown(): Promise<void> {
     if (!this.process) return
     try {
-      await this.sendRequest('shutdown', {})
+      await this.sendRequest('shutdown', {}, 5000)
       await this.sendNotification('exit', {})
     } catch {}
-    this.process.kill()
+    try {
+      if (this.process.pid && !this.process.killed) {
+        this.process.kill('SIGTERM')
+        // Wait up to 3 seconds for graceful exit
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            try { this.process?.kill('SIGKILL') } catch {}
+            resolve()
+          }, 3000)
+          this.process?.once('exit', () => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
+      }
+    } catch {}
     this.process = null
     this.initialized = false
+    this.buffer = ''
+    this.pendingRequests.clear()
+    this.notificationHandlers.clear()
   }
 
   async didOpen(document: TextDocumentItem): Promise<void> {
@@ -285,10 +325,17 @@ export class LspClient {
     }
   }
 
-  private sendRequest(method: string, params: any): Promise<any> {
+  private sendRequest(method: string, params: any, timeoutMs = 30000): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = ++this.requestId
-      this.pendingRequests.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id)
+        reject(new Error(`LSP request '${method}' timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+      this.pendingRequests.set(id, {
+        resolve: (value: any) => { clearTimeout(timer); resolve(value) },
+        reject: (reason: any) => { clearTimeout(timer); reject(reason) }
+      })
       this.sendMessage({ jsonrpc: '2.0', id, method, params })
     })
   }

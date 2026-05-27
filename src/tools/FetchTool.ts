@@ -18,17 +18,38 @@ export const FetchTool: Tool = {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeout)
 
-      const response = await fetch(args.url, {
-        method,
-        headers: args.headers || {},
-        body: args.body,
-        signal: controller.signal
-      })
+      let response: Response
+      try {
+        response = await fetch(args.url, {
+          method,
+          headers: args.headers || {},
+          body: args.body,
+          signal: controller.signal
+        })
+      } catch (fetchErr: any) {
+        clearTimeout(timer)
+        if (fetchErr.name === 'AbortError') {
+          return `Error: Request timed out after ${args.timeout || 30}s`
+        }
+        return `Error: ${fetchErr.message}`
+      }
 
       clearTimeout(timer)
 
       const status = `${response.status} ${response.statusText}`
-      const body = await response.text()
+
+      let body: string
+      try {
+        body = await response.text()
+      } catch (textErr: any) {
+        return `Error: Failed to read response body: ${textErr.message}`
+      }
+
+      // Limit response size to 10MB to prevent OOM
+      const MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+      if (body.length > MAX_RESPONSE_SIZE) {
+        body = body.slice(0, MAX_RESPONSE_SIZE) + '\n\n[Response truncated: exceeded 10MB limit]'
+      }
 
       if (!response.ok) {
         return `HTTP ${status}\n${body}`
@@ -36,9 +57,6 @@ export const FetchTool: Tool = {
 
       return body
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        return `Error: Request timed out after ${args.timeout || 30}s`
-      }
       return `Error: ${err.message}`
     }
   }

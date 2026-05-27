@@ -133,10 +133,24 @@ export class MCPClient {
   async disconnect(): Promise<void> {
     if (this.serverConfig.transport === 'stdio') {
       if (!this.process) return
+      // Reject all pending requests first
+      for (const [id, req] of this.pendingRequests) {
+        req.reject(new Error('MCP client disconnected'))
+      }
+      this.pendingRequests.clear()
       try {
         await this.sendNotification('notifications/cancelled', { requestId: this.requestId, reason: 'client disconnect' })
       } catch {}
-      this.process.kill()
+      try {
+        if (this.process.pid) {
+          this.process.kill('SIGTERM')
+          // Give server 2s to exit gracefully, then force kill
+          const killTimeout = setTimeout(() => {
+            try { this.process?.kill('SIGKILL') } catch {}
+          }, 2000)
+          this.process.once('exit', () => clearTimeout(killTimeout))
+        }
+      } catch {}
       this.process = null
     }
     this.initialized = false
@@ -159,18 +173,38 @@ export class MCPClient {
     this.sendStdioMessage({ jsonrpc: '2.0', method, params })
   }
 
-  private sendStdioRequest(method: string, params: any): Promise<any> {
+  private sendStdioRequest(method: string, params: any, timeoutMs = 30000): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = ++this.requestId
-      this.pendingRequests.set(id, { resolve, reject })
-      this.sendStdioMessage({ jsonrpc: '2.0', id, method, params })
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id)
+        reject(new Error(`MCP request timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+      this.pendingRequests.set(id, {
+        resolve: (value: any) => { clearTimeout(timer); resolve(value) },
+        reject: (reason: any) => { clearTimeout(timer); reject(reason) }
+      })
+      try {
+        this.sendStdioMessage({ jsonrpc: '2.0', id, method, params })
+      } catch (err: any) {
+        clearTimeout(timer)
+        this.pendingRequests.delete(id)
+        reject(err)
+      }
     })
   }
 
   private sendStdioMessage(message: JsonRpcMessage): void {
+    if (!this.process?.stdin?.writable) {
+      throw new Error('MCP server process stdin is not writable')
+    }
     const body = JSON.stringify(message)
     const header = `Content-Length: ${Buffer.byteLength(body, 'utf-8')}\r\n\r\n`
-    this.process?.stdin?.write(header + body)
+    try {
+      this.process.stdin.write(header + body)
+    } catch (err: any) {
+      throw new Error(`Failed to write to MCP server: ${err.message}`)
+    }
   }
 
   private handleStdioData(data: Buffer): void {

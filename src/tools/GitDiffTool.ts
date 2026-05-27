@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { $ } from '../utils/shell.js'
 import { Tool } from './index.js'
 
 export const GitDiffTool: Tool = {
@@ -11,7 +12,6 @@ export const GitDiffTool: Tool = {
   }),
   async execute(args) {
     try {
-      const { $ } = await import('bun')
       const cwd = args.path || process.cwd()
       const cmd = ['git', '-C', cwd, 'diff']
       if (args.cached) {
@@ -20,7 +20,7 @@ export const GitDiffTool: Tool = {
       if (args.file) {
         cmd.push('--', args.file)
       }
-      const { stdout, stderr, exitCode } = await $`git -C ${cwd} diff ${args.cached ? '--cached' : undefined} ${args.file ? ['--', args.file] : undefined}`.nothrow().quiet()
+      const { stdout, stderr, exitCode } = await $(cmd)
       const out = stdout.toString().trim()
       const err = stderr.toString().trim()
       if (exitCode !== 0) {

@@ -16,7 +16,7 @@ export const ScreenshotTool: Tool = {
     let playwright: any
 
     try {
-      const puppeteerMod = await import('puppeteer')
+      const puppeteerMod = await import('puppeteer') as any
       puppeteer = puppeteerMod.default || puppeteerMod
     } catch {
       // puppeteer not available
@@ -24,7 +24,7 @@ export const ScreenshotTool: Tool = {
 
     if (!puppeteer) {
       try {
-        const playwrightMod = await import('playwright')
+        const playwrightMod = await import('playwright') as any
         playwright = playwrightMod.chromium || playwrightMod.firefox || playwrightMod.webkit
       } catch {
         // playwright not available
@@ -33,44 +33,50 @@ export const ScreenshotTool: Tool = {
 
     if (!puppeteer && !playwright) {
       return `Error: No browser automation library found. Install one of the following:\n` +
-        `  bun add puppeteer\n` +
-        `  bun add playwright\n` +
+        `  npm install puppeteer\n` +
+        `  npm install playwright\n` +
         `Then rerun the screenshot command.`
     }
 
     try {
       if (puppeteer) {
         const browser = await puppeteer.launch({ headless: true })
-        const page = await browser.newPage()
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+        try {
+          const page = await browser.newPage()
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
 
-        const screenshotOptions: any = {
-          type: 'png',
-          encoding: 'base64'
-        }
-        if (fullPage) {
-          screenshotOptions.fullPage = true
-        }
+          const screenshotOptions: any = {
+            type: 'png',
+            encoding: 'base64'
+          }
+          if (fullPage) {
+            screenshotOptions.fullPage = true
+          }
 
-        const base64 = await page.screenshot(screenshotOptions)
-        await browser.close()
-        return `data:image/png;base64,${base64}`
+          const base64 = await page.screenshot(screenshotOptions)
+          return `data:image/png;base64,${base64}`
+        } finally {
+          await browser.close()
+        }
       } else if (playwright) {
         const browser = await playwright.launch({ headless: true })
-        const page = await browser.newPage()
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
+        try {
+          const page = await browser.newPage()
+          await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
 
-        const screenshotOptions: any = {
-          type: 'png'
-        }
-        if (fullPage) {
-          screenshotOptions.fullPage = true
-        }
+          const screenshotOptions: any = {
+            type: 'png'
+          }
+          if (fullPage) {
+            screenshotOptions.fullPage = true
+          }
 
-        const buffer = await page.screenshot(screenshotOptions)
-        await browser.close()
-        const base64 = Buffer.from(buffer).toString('base64')
-        return `data:image/png;base64,${base64}`
+          const buffer = await page.screenshot(screenshotOptions)
+          const base64 = Buffer.from(buffer).toString('base64')
+          return `data:image/png;base64,${base64}`
+        } finally {
+          await browser.close()
+        }
       }
     } catch (err: any) {
       return `Error: ${err.message}`

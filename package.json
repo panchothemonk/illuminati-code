@@ -1,13 +1,23 @@
 {
   "name": "illuminati-code",
-  "version": "0.1.0",
-  "module": "src/main.ts",
+  "version": "0.2.0",
+  "description": "Terminal AI coding assistant powered by Kimi API",
+  "main": "dist/main.js",
   "type": "module",
+  "bin": {
+    "illuminati-code": "./dist/main.js"
+  },
   "scripts": {
-    "start": "bun run src/main.ts",
-    "build": "bun build src/main.ts --outfile=illuminati-code --compile"
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts"
   },
   "dependencies": {
-    "zod": "3.24.2"
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3",
+    "zod": "^3.25.76"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

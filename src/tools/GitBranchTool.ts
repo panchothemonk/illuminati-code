@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { $tag } from '../utils/shell.js'
 import { Tool } from './index.js'
 
 export const GitBranchTool: Tool = {
@@ -9,9 +10,8 @@ export const GitBranchTool: Tool = {
   }),
   async execute(args) {
     try {
-      const { $ } = await import('bun')
       const cwd = args.path || process.cwd()
-      const { stdout, stderr, exitCode } = await $`git -C ${cwd} branch -a`.nothrow().quiet()
+      const { stdout, stderr, exitCode } = await $tag`git -C ${cwd} branch -a`
       const out = stdout.toString().trim()
       const err = stderr.toString().trim()
       if (exitCode !== 0) {

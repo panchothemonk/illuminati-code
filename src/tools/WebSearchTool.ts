@@ -16,14 +16,23 @@ export const WebSearchTool: Tool = {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15000)
 
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        signal: controller.signal
-      })
+      let response: Response
+      try {
+        response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          signal: controller.signal
+        })
+      } catch (fetchErr: any) {
+        clearTimeout(timer)
+        if (fetchErr.name === 'AbortError') {
+          return 'Error: Search timed out after 15s'
+        }
+        return `Error: ${fetchErr.message}`
+      }
 
       clearTimeout(timer)
 
@@ -31,7 +40,12 @@ export const WebSearchTool: Tool = {
         return `Error: DuckDuckGo returned HTTP ${response.status}`
       }
 
-      const html = await response.text()
+      let html: string
+      try {
+        html = await response.text()
+      } catch (textErr: any) {
+        return `Error: Failed to read response body: ${textErr.message}`
+      }
       const results: string[] = []
 
       // Parse DuckDuckGo HTML results

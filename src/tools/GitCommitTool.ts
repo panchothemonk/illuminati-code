@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { $ } from '../utils/shell.js'
 import { Tool } from './index.js'
 
 export const GitCommitTool: Tool = {
@@ -11,13 +12,12 @@ export const GitCommitTool: Tool = {
   }),
   async execute(args) {
     try {
-      const { $ } = await import('bun')
       const cwd = args.path || process.cwd()
       const cmd = ['git', '-C', cwd, 'commit', '-m', args.message]
       if (args.amend) {
         cmd.push('--amend')
       }
-      const { stdout, stderr, exitCode } = await $`git -C ${cwd} commit -m ${args.message} ${args.amend ? '--amend' : undefined}`.nothrow().quiet()
+      const { stdout, stderr, exitCode } = await $(cmd)
       const out = stdout.toString().trim()
       const err = stderr.toString().trim()
       if (exitCode !== 0) {

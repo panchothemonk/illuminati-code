@@ -1,22 +1,22 @@
 import { z } from 'zod'
+import { $, $tag } from '../utils/shell.js'
 import { Tool } from './index.js'
 
 async function getGitHubToken(): Promise<string | undefined> {
   const token = process.env['GITHUB_TOKEN']
   if (token) return token
   try {
-    const { $ } = await import('bun')
-    const { stdout } = await $`gh auth token`.nothrow().quiet()
+    const { stdout } = await $tag`gh auth token`
     const t = stdout.toString().trim()
     if (t) return t
   } catch {}
   return undefined
 }
 
-function resolveRepo(repo?: string): string | undefined {
+async function resolveRepo(repo?: string): Promise<string | undefined> {
   if (repo) return repo
   try {
-    const { execSync } = require('child_process')
+    const { execSync } = await import('child_process')
     const remote = execSync('git remote get-url origin', { encoding: 'utf-8', timeout: 5000 }).trim()
     const match = remote.match(/github\.com[:\/]([^\/]+)\/([^\/]+?)(?:\.git)?$/)
     if (match) return `${match[1]}/${match[2]}`
@@ -39,25 +39,19 @@ export const GitHubReviewPRTool: Tool = {
       return 'Error: No GitHub token found. Set GITHUB_TOKEN env var or run gh auth login.'
     }
 
-    const repo = resolveRepo(args.repo)
+    const repo = await resolveRepo(args.repo)
     if (!repo) {
       return 'Error: Could not determine repository. Provide repo as owner/repo or ensure git remote origin is a GitHub URL.'
     }
 
     try {
-      const { $ } = await import('bun')
-      const hasGh = await $`which gh`.nothrow().quiet().then(r => r.exitCode === 0)
+      const hasGh = await $tag`which gh`.then(r => r.exitCode === 0)
 
       if (hasGh) {
-        const eventMap: Record<string, string> = {
-          'approve': 'APPROVE',
-          'request-changes': 'REQUEST_CHANGES',
-          'comment': 'COMMENT'
-        }
-        const event = eventMap[args.reviewType]
-        const cmd = ['gh', 'pr', 'review', String(args.prNumber), '--repo', repo, '--', event]
-        if (args.body) { cmd.push('--body', args.body) }
-        const { stdout, stderr, exitCode } = await $`gh pr review ${String(args.prNumber)} --repo ${repo} --${event} ${args.body ? ['--body', args.body] : []}`.nothrow().quiet()
+        const cmd = ['gh', 'pr', 'review', String(args.prNumber), '--repo', repo]
+        cmd.push('--' + args.reviewType)
+        if (args.body) { cmd.push('--body'); cmd.push(args.body) }
+        const { stdout, stderr, exitCode } = await $(cmd)
         const out = stdout.toString().trim()
         const err = stderr.toString().trim()
         if (exitCode !== 0) {

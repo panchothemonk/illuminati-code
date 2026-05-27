@@ -45,7 +45,9 @@ export function generateHashVector(text: string): number[] {
 }
 
 function getLanguageFromPath(filePath: string): string {
-  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase()
+  const dotIndex = filePath.lastIndexOf('.')
+  if (dotIndex === -1 || dotIndex === 0) return 'unknown'
+  const ext = filePath.slice(dotIndex).toLowerCase()
   const map: Record<string, string> = {
     '.ts': 'typescript', '.tsx': 'tsx', '.js': 'javascript', '.jsx': 'jsx',
     '.py': 'python', '.rs': 'rust', '.go': 'go', '.java': 'java',
@@ -88,7 +90,8 @@ function chunkContent(content: string, filePath: string, chunkSize = 40, overlap
         language: getLanguageFromPath(filePath)
       })
     }
-    i += chunkSize - overlap
+    const step = Math.max(1, chunkSize - overlap)
+    i += step
     if (i >= lines.length) break
   }
   return chunks
@@ -140,13 +143,20 @@ export function indexDirectory(store: VectorStore, dirPath: string): number {
 
   let total = 0
   function walk(dir: string) {
-    const entries = readdirSync(dir, { withFileTypes: true })
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return // Permission denied or not a directory
+    }
     for (const entry of entries) {
       const fullPath = join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (shouldIndexFile(fullPath)) {
-          walk(fullPath)
-        }
+        // Check if directory name matches skip patterns
+        const dirName = entry.name
+        const skipDirs = ['node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', 'coverage', '.cache', '.turbo', 'vendor']
+        if (skipDirs.includes(dirName)) continue
+        walk(fullPath)
       } else if (entry.isFile() && shouldIndexFile(fullPath)) {
         total += indexFile(store, fullPath, resolved)
       }
@@ -157,20 +167,23 @@ export function indexDirectory(store: VectorStore, dirPath: string): number {
 }
 
 export function removeFileFromIndex(store: VectorStore, filePath: string): number {
-  const relPath = filePath
-  const toRemove: string[] = []
+  const resolved = resolve(filePath)
+  const relPath = resolved
+  const toRemove: number[] = []
   for (const [id, idx] of store.index) {
     if (id.startsWith(relPath + ':')) {
-      toRemove.push(id)
+      toRemove.push(idx)
     }
   }
-  for (const id of toRemove) {
-    const idx = store.index.get(id)
-    if (idx !== undefined) {
-      store.snippets.splice(idx, 1)
-      store.index.delete(id)
-    }
+  if (toRemove.length === 0) return 0
+
+  // Sort in descending order to remove from end first
+  toRemove.sort((a, b) => b - a)
+  for (const idx of toRemove) {
+    store.snippets.splice(idx, 1)
   }
+  // Rebuild the index
+  store.index.clear()
   for (let i = 0; i < store.snippets.length; i++) {
     store.index.set(store.snippets[i].id, i)
   }

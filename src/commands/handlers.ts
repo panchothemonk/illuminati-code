@@ -1,4 +1,4 @@
-import { registerCommand } from './registry.js'
+import { registerCommand, listCommands } from './registry.js'
 import { compactMessages } from '../services/compact.js'
 import { getTokenUsage, estimateMessagesTokens } from '../utils/tokenCounter.js'
 import { undoLast, getHistory } from '../utils/history.js'
@@ -30,7 +30,6 @@ function saveConfig(cfg: Record<string, any>): void {
 export function registerAllCommands(): void {
   // 1. /help - show all commands
   registerCommand('help', 'Show all available slash commands', (args, ctx) => {
-    const { listCommands } = require('./registry.js')
     const cmds = listCommands()
     ctx.print('\x1b[36m═══════════════════════════════════════\x1b[0m')
     ctx.print('\x1b[36m  Available Commands                   \x1b[0m')
@@ -105,7 +104,7 @@ export function registerAllCommands(): void {
       ctx.print('  None')
     } else {
       for (const w of workers) {
-        ctx.print(`  ${w.id} (${w.role || 'worker'})`)
+        ctx.print(`  ${w.id} (${w.config?.role || 'worker'})`)
       }
     }
     ctx.print('\x1b[36mActive Tasks:\x1b[0m')
@@ -265,7 +264,7 @@ export function registerAllCommands(): void {
   registerCommand('exit', 'Quit Illuminati Code', (args, ctx) => {
     ctx.sessionManager.destroy()
     ctx.rl.close()
-    process.exit(0)
+    // Let the rl.close() event handler exit properly
   })
 
   // Bonus: /tokens for token usage
@@ -280,7 +279,7 @@ export function registerAllCommands(): void {
   // Bonus: /reset - clear current session
   registerCommand('reset', 'Reset current session', (args, ctx) => {
     ctx.sessionManager.reset()
-    const system = { role: 'system' as const, content: 'You are Illuminati Code, a terminal AI coding assistant. You have access to Bash, Read, Write, Edit, Grep, Glob, LS, View, Fetch, WebSearch, and WebFetch tools. Use them when needed. When you need to use a tool, output it in this exact XML format:\n<tool_use>\n<name>ToolName</name>\n<arguments>{"key":"value"}</arguments>\n</tool_use>' }
+    const system = { role: 'system' as const, content: 'You are Illuminati Code, a terminal AI coding assistant. You have access to tools: Bash, Read, Write, Edit, Grep, Glob, LS, View, Fetch, WebSearch, WebFetch, GitStatus, GitDiff, GitLog, GitBranch, GitCheckout, GitCommit, and more. When you need to use a tool, call it using the function_calling mechanism. Analyze the user request, use tools as needed, and provide a clear final answer.' }
     ctx.setMessages([system])
     ctx.sessionManager.setMessages([system])
     ctx.print('\x1b[33mSession reset.\x1b[0m')

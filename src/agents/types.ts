@@ -57,9 +57,9 @@ export interface AgentMessage {
 }
 
 export interface SwarmConfig {
-  maxConcurrentAgents: number
-  defaultTimeout: number
-  defaultMaxIterations: number
+  maxConcurrentAgents?: number
+  defaultTimeout?: number
+  defaultMaxIterations?: number
   apiKey: string
   baseUrl?: string
   clawId?: string

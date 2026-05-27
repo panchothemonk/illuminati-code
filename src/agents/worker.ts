@@ -141,24 +141,34 @@ export class AgentWorker {
         throw new Error('Agent execution cancelled')
       }
 
-      const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-          'User-Agent': 'Desktop Kimi Claw Plugin',
-          'X-Kimi-Claw-ID': this.clawId
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: this.messages,
-          tools,
-          stream: true,
-          temperature: this.config.temperature ?? 0.7,
-          max_tokens: this.config.maxTokens
-        }),
-        signal: this.abortController?.signal
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000)
+
+      let response: Response
+      try {
+        response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`,
+            'User-Agent': 'Desktop Kimi Claw Plugin',
+            'X-Kimi-Claw-ID': this.clawId
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: this.messages,
+            tools,
+            stream: true,
+            temperature: this.config.temperature ?? 0.7,
+            max_tokens: this.config.maxTokens
+          }),
+          signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId)
+        throw fetchErr
+      }
 
       if (!response.ok) {
         const err = await response.text()
@@ -178,7 +188,14 @@ export class AgentWorker {
           throw new Error('Agent execution cancelled')
         }
 
-        const { done, value } = await reader.read()
+        let readResult
+        try {
+          readResult = await reader.read()
+        } catch (readErr: any) {
+          try { reader.cancel() } catch {}
+          throw new Error(`Stream read error: ${readErr.message}`)
+        }
+        const { done, value } = readResult
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -311,17 +328,16 @@ export class AgentWorker {
 
   private parseToolCalls(content: string): ToolCall[] {
     const calls: ToolCall[] = []
-    const regex = /<tool_use>([\s\S]*?)<\/tool_use>/g
+    const regex = /<tool_use>\s*<name>([\s\S]*?)<\/name>\s*<arguments>([\s\S]*?)<\/arguments>\s*<\/tool_use>/g
     let match
     while ((match = regex.exec(content)) !== null) {
-      const inner = match[1]
-      const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/)
-      const argMatch = inner.match(/<arguments>([\s\S]*?)<\/arguments>/)
-      if (nameMatch && argMatch) {
+      const name = match[1].trim()
+      const args = match[2].trim()
+      if (name && args) {
         calls.push({
           id: `call_${Math.random().toString(36).slice(2, 10)}`,
-          name: nameMatch[1].trim(),
-          arguments: argMatch[1].trim()
+          name,
+          arguments: args
         })
       }
     }

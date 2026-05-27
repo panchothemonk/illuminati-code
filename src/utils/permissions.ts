@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { createInterface } from 'readline'
 
 export enum PermissionMode {
   auto = 'auto',
@@ -136,13 +137,18 @@ export async function checkPermission(ctx: ToolPermissionContext): Promise<{ all
     }
 
     const answer = await new Promise<string>((resolve) => {
-      const readline = require('readline').createInterface({
+      const askRl = createInterface({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
+        terminal: true
       })
-      readline.question(`${question} (y/n): `, (ans: string) => {
-        readline.close()
-        resolve(ans.trim().toLowerCase())
+      askRl.question(`${question} (y/n): `, (response: string) => {
+        askRl.close()
+        resolve(response.trim().toLowerCase())
+      })
+      // Handle stdin end (Ctrl+D)
+      askRl.on('close', () => {
+        resolve('n')
       })
     })
 
@@ -163,8 +169,8 @@ export function createDefaultPermissionConfig(): PermissionConfig {
       { pattern: '^/var/tmp/', mode: PermissionMode.auto },
       { pattern: 'node_modules', mode: PermissionMode.ask },
       { pattern: 'package\.json$', mode: PermissionMode.ask },
-      { pattern: '\.env', mode: PermissionMode.deny },
-      { pattern: '\.ssh', mode: PermissionMode.deny },
+      { pattern: '\\.env', mode: PermissionMode.deny },
+      { pattern: '\\.ssh', mode: PermissionMode.deny },
       { pattern: '\.git/', mode: PermissionMode.ask },
       { pattern: 'rm -rf', mode: PermissionMode.deny, tool: 'Bash' }
     ]

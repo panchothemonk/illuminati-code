@@ -1,4 +1,5 @@
 import { z, ZodSchema } from 'zod'
+import { $, $tag, $exec } from '../utils/shell.js'
 import { LSTool } from './LSTool.js'
 import { ViewTool } from './ViewTool.js'
 import { FetchTool } from './FetchTool.js'
@@ -49,7 +50,7 @@ export const BashTool: Tool = {
   }),
   async execute(args) {
     try {
-      const { stdout, stderr, exitCode } = await Bun.$`bash -c ${args.command}`.nothrow().quiet()
+      const { stdout, stderr, exitCode } = await $exec(`bash -c ${args.command}`)
       const out = stdout.toString()
       const err = stderr.toString()
       if (exitCode !== 0) {
@@ -149,14 +150,36 @@ export const GrepTool: Tool = {
   parameters: z.object({
     pattern: z.string().describe('Regex pattern to search for'),
     path: z.string().optional().describe('Directory or file to search in (default: current directory)'),
-    file_glob: z.string().optional().describe('Filter files by pattern, e.g. *.ts')
+    file_glob: z.string().optional().describe('Filter files by glob pattern, e.g. *.ts')
   }),
   async execute(args) {
     try {
-      const { $ } = await import('bun')
       const path = args.path || '.'
       const glob = args.file_glob || '*'
-      const { stdout, stderr, exitCode } = await $`grep -rn ${args.pattern} ${path} --include=${glob}`.nothrow().quiet()
+      // Use find + grep for proper glob support, or grep directly for single files
+      let stdout, stderr, exitCode
+      try {
+        const stat = (await import('fs')).statSync(path)
+        if (stat.isFile()) {
+          // Single file - grep directly
+          const result = await $tag`grep -n ${args.pattern} ${path}`
+          stdout = result.stdout
+          stderr = result.stderr
+          exitCode = result.exitCode
+        } else {
+          // Directory - use find for glob, then xargs grep
+          const result = await $tag`find ${path} -type f -name ${glob} -exec grep -n ${args.pattern} {} +`
+          stdout = result.stdout
+          stderr = result.stderr
+          exitCode = result.exitCode
+        }
+      } catch {
+        // Fallback to simple grep -r
+        const result = await $tag`grep -rn ${args.pattern} ${path}`
+        stdout = result.stdout
+        stderr = result.stderr
+        exitCode = result.exitCode
+      }
       const out = stdout.toString()
       const err = stderr.toString()
       if (exitCode !== 0 && !out) {
@@ -178,9 +201,20 @@ export const GlobTool: Tool = {
   }),
   async execute(args) {
     try {
-      const { $ } = await import('bun')
       const path = args.path || '.'
-      const { stdout, stderr, exitCode } = await $`find ${path} -type f -name ${args.pattern}`.nothrow().quiet()
+      const pattern = args.pattern
+      // Support **/ prefix by stripping it and using find recursively
+      if (pattern.startsWith('**/')) {
+        const suffix = pattern.slice(3)
+        const { stdout, stderr, exitCode } = await $tag`find ${path} -type f -name ${suffix}`
+        const out = stdout.toString()
+        if (exitCode !== 0 && !out) {
+          return stderr.toString() || 'No matches found'
+        }
+        return out
+      }
+      // Simple pattern - use find directly
+      const { stdout, stderr, exitCode } = await $tag`find ${path} -type f -name ${pattern}`
       const out = stdout.toString()
       if (exitCode !== 0 && !out) {
         return stderr.toString() || 'No matches found'
